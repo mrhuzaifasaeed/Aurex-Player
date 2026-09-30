@@ -97,6 +97,9 @@ jobs:
           # Same asset name as earlier releases; the updater looks for "-setup.exe".
           $asset = "Aurex.Player_${version}_x64-setup.exe"
           Copy-Item $built.FullName $asset
-          $releaseArgs = @("v$version", $asset, "--repo", "${{ github.repository }}", "--target", "${{ github.sha }}", "--title", "Aurex Player $version")
+          # Shown as e.g. "Aurex Player 1.1" for 1.1.0; the tag keeps the full
+          # version, since the updater compares it with the app's own.
+          $displayVersion = $version -replace '\.0$', ''
+          $releaseArgs = @("v$version", $asset, "--repo", "${{ github.repository }}", "--target", "${{ github.sha }}", "--title", "Aurex Player $displayVersion")
           if ($env:NOTES) { $releaseArgs += @("--notes", $env:NOTES) } else { $releaseArgs += "--generate-notes" }
           gh release create @releaseArgs
