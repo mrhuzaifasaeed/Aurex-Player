@@ -16,6 +16,7 @@ use commands::MpvState;
 use mpv_ipc::MpvHandle;
 use std::sync::Mutex;
 use tauri::{Emitter, Manager};
+use tauri_plugin_shell::process::CommandChild;
 use tauri_plugin_shell::ShellExt;
 
 /// The file path Windows passes on the command line when a user double-clicks
@@ -30,6 +31,18 @@ struct PendingOpenPath(Mutex<Option<String>>);
 fn media_path_from_args(mut args: impl Iterator<Item = String>) -> Option<String> {
     args.next();
     args.next()
+}
+
+/// The running mpv sidecar. Dropping a `CommandChild` doesn't end the
+/// process, so without this mpv.exe outlived the app after every close -
+/// which then blocked the next install/update from replacing mpv.exe
+/// ("Error opening file for writing: ...\mpv.exe").
+struct MpvProcess(Mutex<Option<CommandChild>>);
+
+fn stop_mpv(app: &tauri::AppHandle) {
+    if let Some(child) = app.state::<MpvProcess>().0.lock().unwrap().take() {
+        let _ = child.kill();
+    }
 }
 
 #[tauri::command]
@@ -105,6 +118,8 @@ pub fn run() {
             let app_handle_for_state = app.handle().clone();
             window.on_window_event(move |event| match event {
                 tauri::WindowEvent::Destroyed => {
+                    // mpv renders into this window - nothing left for it to do.
+                    stop_mpv(&app_handle_for_close);
                     for label in [video_adjust_window::WINDOW_LABEL, fullscreen_bar_window::WINDOW_LABEL] {
                         if let Some(popover) = app_handle_for_close.get_webview_window(label) {
                             let _ = popover.close();
@@ -123,7 +138,7 @@ pub fn run() {
                 .sidecar("mpv")
                 .expect("mpv sidecar binary not found");
 
-            sidecar
+            let sidecar_process = sidecar
                 .args([
                     // Ignore the user's own mpv.conf/input.conf (if any is
                     // installed system-wide) so the bundled sidecar behaves
@@ -172,6 +187,8 @@ pub fn run() {
                 ])
                 .spawn()
                 .expect("failed to spawn mpv sidecar");
+            let (_mpv_events, mpv_child) = sidecar_process;
+            app.manage(MpvProcess(Mutex::new(Some(mpv_child))));
 
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
@@ -232,6 +249,13 @@ pub fn run() {
             advanced::set_advanced_config,
             take_pending_open_path,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            // Covers every way the app ends: closing the window, and the
+            // updater's exit right after it launches the installer.
+            if let tauri::RunEvent::Exit = event {
+                stop_mpv(app);
+            }
+        });
 }

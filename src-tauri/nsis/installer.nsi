@@ -28,6 +28,26 @@ ManifestDPIAwareness PerMonitorV2
 !include "Win\COM.nsh"
 !include "Win\Propkey.nsh"
 !include "StrFunc.nsh"
+
+; The app starts mpv.exe (and older builds could leave it running after the
+; app itself closed), and CheckIfAppIsRunning only looks for the main exe -
+; so a leftover mpv.exe kept "$INSTDIR\mpv.exe" locked and the install failed
+; with "Error opening file for writing". Stops anything still running from
+; the install folder (mpv, or a main exe from a build that used a different
+; file name), matched by full path so no unrelated mpv/app elsewhere is touched.
+; The current process is skipped: an upgrade runs the previous uninstaller in
+; place (`_?=$INSTDIR`), i.e. from inside the install folder.
+!macro StopProcessesInInstallDir
+  Push $0
+  Push $1
+  System::Call 'kernel32::GetCurrentProcessId()i.r1'
+  nsExec::Exec `powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "Get-Process | Where-Object { $$_.Id -ne $1 -and $$_.Path -and $$_.Path.StartsWith('$INSTDIR\', [StringComparison]::OrdinalIgnoreCase) } | Stop-Process -Force -ErrorAction SilentlyContinue"`
+  Pop $0 ; powershell's exit code - nothing to act on either way
+  Pop $1
+  Pop $0
+  ; Give Windows a moment to release the files those processes held.
+  Sleep 500
+!macroend
 ${StrCase}
 ${StrLoc}
 
@@ -685,6 +705,7 @@ Section "-Install"
   !endif
 
   !insertmacro CheckIfAppIsRunning "${MAINBINARYNAME}.exe" "${PRODUCTNAME}"
+  !insertmacro StopProcessesInInstallDir
 
   ; Copy main executable
   File "${MAINBINARYSRCPATH}"
@@ -882,6 +903,7 @@ Section Uninstall
   !endif
 
   !insertmacro CheckIfAppIsRunning "${MAINBINARYNAME}.exe" "${PRODUCTNAME}"
+  !insertmacro StopProcessesInInstallDir
 
   ; Delete the app directory and its content from disk
   ; Copy main executable
