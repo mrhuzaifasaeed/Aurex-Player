@@ -14,7 +14,7 @@ The app checks for updates on its own (Settings → Updates), so you'll always b
 - **Six themes** — Dark, Light, OLED Black, Liquid Glass, Midnight Blue, and Sunset, each with 5 accent colors and optional dynamic accent tinting from the video itself.
 - **10-band equalizer** with built-in presets (Flat, Cinema, Music, Podcast, Rock, Pop, Bass Boost, Treble Boost, Vocal Boost) and custom saved presets.
 - **Video adjustments** — brightness, contrast, saturation, gamma, and hue, live while playing.
-- **Fullscreen playback** with auto-hiding controls: the transport bar fades out after 3 seconds of inactivity and reappears instantly on mouse movement, clicks, scrolling, or a keyboard shortcut — never while you're actively using the seek bar, volume slider, or any popup.
+- **Fullscreen playback** with a floating, auto-hiding control bar: it fades out after 3 seconds of inactivity and reappears instantly on mouse movement, clicks, scrolling, or a keyboard shortcut — never while you're actively using the seek bar, volume slider, or any popup. Enter/exit with the fullscreen button, a double-click, `F`, or `Esc`.
 - **Resume playback** — picks up where you left off on a file you've already watched.
 - **Fully remappable keyboard shortcuts**, cache management, and a repair-mode settings panel to reset any part of the app that misbehaves.
 - **File associations** so double-clicking a supported media file in Explorer opens it directly in Aurex Player.

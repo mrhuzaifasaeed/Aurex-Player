@@ -1,5 +1,6 @@
 import { motion, type Variants } from "framer-motion";
 import { useSettingsStore } from "../stores/settingsStore";
+import { PlayIcon } from "./icons";
 
 const container: Variants = {
   hidden: { opacity: 0 },
@@ -24,7 +25,12 @@ export function Onboarding() {
       animate="visible"
       className="flex flex-1 flex-col items-center justify-center gap-6 bg-[rgb(var(--bg))] text-center"
     >
-      <motion.div variants={item} className="h-14 w-14 rounded-2xl bg-[rgb(var(--accent))]" />
+      <motion.div
+        variants={item}
+        className="flex h-16 w-16 items-center justify-center rounded-[20px] bg-linear-to-br from-[rgb(var(--accent))] to-[rgb(var(--accent)/0.6)] text-white shadow-[0_18px_40px_-14px_rgb(var(--accent)/0.8)]"
+      >
+        <PlayIcon className="h-7 w-7 translate-x-0.5" />
+      </motion.div>
       <motion.div variants={item}>
         <h1 className="text-2xl font-semibold">Welcome to Aurex Player</h1>
         <p className="mt-2 text-sm text-[rgb(var(--text-muted))]">
@@ -35,7 +41,7 @@ export function Onboarding() {
         variants={item}
         onClick={completeOnboarding}
         whileTap={{ scale: 0.96 }}
-        className="rounded-full bg-[rgb(var(--accent))] px-6 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
+        className="rounded-full bg-[rgb(var(--accent))] px-7 py-2.5 text-sm font-medium text-white shadow-[0_8px_24px_-10px_rgb(var(--accent))] transition-[filter] hover:brightness-110"
       >
         Get Started
       </motion.button>

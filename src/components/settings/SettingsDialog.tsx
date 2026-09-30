@@ -95,7 +95,7 @@ export function SettingsDialog({ initialTab = "general", onClose }: SettingsDial
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.96, y: 8 }}
         transition={{ duration: 0.18, ease: "easeOut" }}
-        className="glass-panel flex h-[420px] w-[560px] overflow-hidden rounded-xl border border-[rgb(var(--border))] shadow-xl"
+        className="glass-panel flex h-[min(460px,calc(100%-32px))] w-[min(620px,calc(100%-32px))] overflow-hidden rounded-2xl border border-[rgb(var(--border))] shadow-2xl"
       >
         <nav className="flex w-40 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-[rgb(var(--border))] bg-[rgb(var(--bg))] p-2">
           <TabButton label="General" active={tab === "general"} onClick={() => setTab("general")} />
@@ -233,10 +233,11 @@ function TabButton({ label, active, onClick }: { label: string; active: boolean;
   return (
     <button
       onClick={onClick}
+      aria-current={active ? "page" : undefined}
       className={`glass-btn cursor-pointer rounded-md px-3 py-2 text-left text-sm transition-colors duration-150 ${
         active
-          ? "bg-[rgb(var(--bg-hover))] text-[rgb(var(--text))]"
-          : "text-[rgb(var(--text-muted))] hover:text-[rgb(var(--text))]"
+          ? "bg-[rgb(var(--bg-hover))] font-medium text-[rgb(var(--text))] shadow-[inset_2px_0_0_rgb(var(--accent))]"
+          : "text-[rgb(var(--text-muted))] hover:bg-[rgb(var(--bg-hover)/0.6)] hover:text-[rgb(var(--text))]"
       }`}
     >
       {label}

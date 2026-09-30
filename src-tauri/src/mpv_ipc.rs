@@ -12,6 +12,9 @@ use tokio::sync::{oneshot, Mutex as AsyncMutex};
 struct TickState {
     position: f64,
     duration: f64,
+    /// Last value mpv reported for its `pause` property - see the
+    /// `file-loaded` handling in `handle_ipc_line` for why this is tracked.
+    paused: bool,
 }
 
 /// Oneshot senders awaiting a response to a `get_property` request, keyed by
@@ -190,6 +193,7 @@ fn handle_ipc_line(app: &AppHandle, tick_state: &Arc<Mutex<TickState>>, pending:
                     }
                     "pause" => {
                         let is_paused = data.and_then(Value::as_bool).unwrap_or(false);
+                        tick_state.lock().unwrap().paused = is_paused;
                         let _ = app.emit(
                             "mpv://state",
                             json!({ "state": if is_paused { "paused" } else { "playing" } }),
@@ -202,6 +206,21 @@ fn handle_ipc_line(app: &AppHandle, tick_state: &Arc<Mutex<TickState>>, pending:
                     }
                     _ => {}
                 }
+            }
+            "file-loaded" => {
+                // mpv only reports `pause` when it *changes*. Opening a file
+                // while already unpaused (the common case - e.g. the very
+                // first file, or the next one after a track that was
+                // playing) never produces a pause event at all, which left
+                // the frontend stuck in its "loading" state: the audio view
+                // kept showing "Loading <file>..." over itself and the
+                // play/pause button showed the wrong icon until the user
+                // clicked. Report the real state once the file is ready.
+                let paused = tick_state.lock().unwrap().paused;
+                let _ = app.emit(
+                    "mpv://state",
+                    json!({ "state": if paused { "paused" } else { "playing" } }),
+                );
             }
             "end-file" => {
                 if value.get("reason").and_then(Value::as_str) == Some("error") {

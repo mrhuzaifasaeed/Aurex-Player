@@ -88,8 +88,11 @@ export async function listenToPlayerEvents() {
       const now = Date.now();
       // Skip saving while a resume prompt is pending: position briefly
       // reports ~0 right after opening, and saving that would clobber the
-      // very progress the prompt is about to offer to resume.
-      if (!store.resumePrompt && now - lastProgressSaveMs >= PROGRESS_SAVE_INTERVAL_MS) {
+      // very progress the prompt is about to offer to resume. Only the main
+      // window saves at all - the fullscreen bar's window mirrors the
+      // playlist too (see controlsBridge.ts) but not the resume prompt.
+      const isMainWindow = (document.documentElement.dataset.window ?? "main") === "main";
+      if (isMainWindow && !store.resumePrompt && now - lastProgressSaveMs >= PROGRESS_SAVE_INTERVAL_MS) {
         lastProgressSaveMs = now;
         const track = store.currentTrack();
         if (track) saveProgress(track.path, event.payload.position, event.payload.duration);
