@@ -4,7 +4,7 @@ A modern, lightweight, high-performance media player for Windows, built with [Ta
 
 ## Download
 
-Grab the latest installer from the [Releases page](https://github.com/huzzah295/Aurex-Player/releases/latest) — download `Aurex.Player_x.x.x_x64-setup.exe` and run it. No other setup required.
+Grab the latest installer from the [Releases page](https://github.com/mrhuzaifasaeed/Aurex-Player/releases/latest) — download `Aurex.Player_x.x.x_x64-setup.exe` and run it. No other setup required.
 
 The app checks for updates on its own (Settings → Updates), so you'll always be notified when a new version is available.
 
@@ -62,7 +62,7 @@ All shortcuts are rebindable from Settings → Shortcuts.
 
 ## License
 
-The compiled app (available on the [Releases page](https://github.com/huzzah295/Aurex-Player/releases/latest)) is free to download and use. The source code in this repository is shared for transparency only - it is **not** open source, and reuse, modification, or redistribution of the code is not permitted without permission. See [LICENSE](LICENSE) for the full terms.
+The compiled app (available on the [Releases page](https://github.com/mrhuzaifasaeed/Aurex-Player/releases/latest)) is free to download and use. The source code in this repository is shared for transparency only - it is **not** open source, and reuse, modification, or redistribution of the code is not permitted without permission. See [LICENSE](LICENSE) for the full terms.
 
 ## Author
 

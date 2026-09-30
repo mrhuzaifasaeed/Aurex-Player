@@ -9,7 +9,11 @@ use tauri::{AppHandle, Manager};
 /// cryptographically verifying the downloaded installer - the official
 /// `tauri-plugin-updater` is the natural upgrade path later if/when a
 /// signing setup exists.
-const RELEASES_API_URL: &str = "https://api.github.com/repos/huzzah295/Aurex-Player/releases/latest";
+///
+/// The GitHub account was renamed from `huzzah295` to `mrhuzaifasaeed`.
+/// GitHub redirects the old name for now, but it points at the current one
+/// directly so update checks don't depend on that redirect staying in place.
+const RELEASES_API_URL: &str = "https://api.github.com/repos/mrhuzaifasaeed/Aurex-Player/releases/latest";
 
 /// GitHub's unauthenticated REST API allows only 60 requests/hour per IP -
 /// trivial to exhaust with a few manual "Check for Updates" clicks. Serving a
@@ -185,7 +189,11 @@ pub async fn check_for_update(app: AppHandle) -> Result<UpdateInfo, String> {
 /// privileges. Restricting it to this repo's own release-asset path turns
 /// "download and run any URL" into "download and run an asset this project
 /// itself published".
-const TRUSTED_DOWNLOAD_PREFIX: &str = "https://github.com/huzzah295/Aurex-Player/releases/download/";
+///
+/// This must name the repository's *current* owner: the release API returns
+/// asset URLs under the current name, so a stale owner here (as in 1.0.0,
+/// which still said `huzzah295`) rejects every genuine installer.
+const TRUSTED_DOWNLOAD_PREFIX: &str = "https://github.com/mrhuzaifasaeed/Aurex-Player/releases/download/";
 
 fn is_trusted_download_url(url: &str) -> bool {
     url.starts_with(TRUSTED_DOWNLOAD_PREFIX)

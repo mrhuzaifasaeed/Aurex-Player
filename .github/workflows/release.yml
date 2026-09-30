@@ -1,0 +1,105 @@
+# Builds the Windows installer and publishes it as a GitHub Release, which is
+# what the in-app updater (src-tauri/src/update.rs) checks and downloads.
+#
+# To ship a new version: bump "version" in src-tauri/tauri.conf.json, merge it
+# to main, then run this workflow (Actions tab -> Release -> Run workflow).
+# The release is tagged v<version> from that file.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      notes:
+        description: Release notes (optional - defaults to the merged pull requests since the last release)
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read app version
+        id: version
+        shell: pwsh
+        run: |
+          $version = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          "version=$version" >> $env:GITHUB_OUTPUT
+          Write-Host "Releasing Aurex Player $version"
+
+      - name: Make sure this version isn't already released
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "v${{ steps.version.outputs.version }}" --repo "${{ github.repository }}" *> $null
+          if ($LASTEXITCODE -eq 0) {
+            throw "v${{ steps.version.outputs.version }} is already released - bump the version in src-tauri/tauri.conf.json first."
+          }
+          exit 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # The mpv sidecar isn't committed (it's a 100MB+ third-party binary, see
+      # .gitignore) - fetch the current x86_64 build from the same source the
+      # README points to.
+      - name: Download mpv
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $release = gh api repos/shinchiro/mpv-winbuild-cmake/releases/latest | ConvertFrom-Json
+          $asset = $release.assets | Where-Object { $_.name -match '^mpv-x86_64-\d{8}-git-[0-9a-f]+\.7z$' } | Select-Object -First 1
+          if (-not $asset) {
+            Write-Host "Assets in $($release.tag_name):"
+            $release.assets | ForEach-Object { Write-Host "  $($_.name)" }
+            throw "No plain x86_64 mpv build found in shinchiro/mpv-winbuild-cmake $($release.tag_name)"
+          }
+          Write-Host "Using $($asset.name)"
+          $ProgressPreference = "SilentlyContinue"
+          Invoke-WebRequest $asset.browser_download_url -OutFile mpv.7z
+          7z e mpv.7z mpv.exe -ompv-extract -y
+          New-Item -ItemType Directory -Force src-tauri/binaries | Out-Null
+          Copy-Item mpv-extract/mpv.exe src-tauri/binaries/mpv-x86_64-pc-windows-msvc.exe
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build installer
+        run: npx tauri build
+
+      - name: Publish release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NOTES: ${{ inputs.notes }}
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $built = Get-ChildItem "src-tauri/target/release/bundle/nsis/*_${version}_x64-setup.exe" | Select-Object -First 1
+          if (-not $built) { throw "Installer for $version not found" }
+          # Same asset name as earlier releases; the updater looks for "-setup.exe".
+          $asset = "Aurex.Player_${version}_x64-setup.exe"
+          Copy-Item $built.FullName $asset
+          # Shown as e.g. "Aurex Player 1.1" for 1.1.0; the tag keeps the full
+          # version, since the updater compares it with the app's own.
+          $displayVersion = $version -replace '\.0$', ''
+          $releaseArgs = @("v$version", $asset, "--repo", "${{ github.repository }}", "--target", "${{ github.sha }}", "--title", "Aurex Player $displayVersion")
+          if ($env:NOTES) { $releaseArgs += @("--notes", $env:NOTES) } else { $releaseArgs += "--generate-notes" }
+          gh release create @releaseArgs
