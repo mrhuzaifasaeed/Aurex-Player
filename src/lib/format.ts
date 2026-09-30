@@ -24,3 +24,10 @@ export function formatBitrate(bitsPerSecond: number): string {
   if (bitsPerSecond >= 1_000_000) return `${(bitsPerSecond / 1_000_000).toFixed(2)} Mbps`;
   return `${(bitsPerSecond / 1000).toFixed(0)} kbps`;
 }
+
+/** Splits "Family - Live.mp3" into { name: "Family - Live", ext: "MP3" } for display. */
+export function splitFileName(fileName: string): { name: string; ext: string } {
+  const dot = fileName.lastIndexOf(".");
+  if (dot <= 0) return { name: fileName, ext: "" };
+  return { name: fileName.slice(0, dot), ext: fileName.slice(dot + 1).toUpperCase() };
+}

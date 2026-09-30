@@ -1,4 +1,5 @@
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Mutex;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
@@ -21,35 +22,62 @@ static GENERATION: AtomicU64 = AtomicU64::new(0);
 /// "start suspending" can't race into hiding the bar out from under the user.
 static SUSPENDED: AtomicBool = AtomicBool::new(false);
 
-fn get_or_create_window(
-    app: &AppHandle,
-    x: f64,
-    y: f64,
-    width: f64,
-    height: f64,
-) -> Result<(), String> {
+/// True between `show_fullscreen_controls` (entering fullscreen) and
+/// `hide_fullscreen_controls_now` (leaving it). Pulses, suspends and pending
+/// auto-hides are all no-ops outside of that span: a mouse-move or hover
+/// event that was already in flight when fullscreen ended must never bring
+/// the bar back (or hide the cursor) over the normal windowed player. Held
+/// as a lock rather than a bare flag so "check active, then show" can't
+/// interleave with "mark inactive, then hide".
+static ACTIVE: Mutex<bool> = Mutex::new(false);
+
+fn get_or_create_window(app: &AppHandle, x: i32, y: i32, width: u32, height: u32) -> Result<(), String> {
     if let Some(window) = app.get_webview_window(WINDOW_LABEL) {
-        window.set_position(tauri::Position::Logical(tauri::LogicalPosition::new(x, y)))
+        window
+            .set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(x, y)))
             .map_err(|e| e.to_string())?;
-        window.set_size(tauri::Size::Logical(tauri::LogicalSize::new(width, height)))
+        window
+            .set_size(tauri::Size::Physical(tauri::PhysicalSize::new(width, height)))
             .map_err(|e| e.to_string())?;
         window.show().map_err(|e| e.to_string())?;
         return Ok(());
     }
 
-    WebviewWindowBuilder::new(app, WINDOW_LABEL, WebviewUrl::App("index.html".into()))
+    let window = WebviewWindowBuilder::new(app, WINDOW_LABEL, WebviewUrl::App("index.html".into()))
         .title("Aurex Player Controls")
         .decorations(false)
+        // The bar renders as a floating rounded panel (see
+        // FullscreenControlsWindow.tsx); everything around it must be
+        // see-through rather than an opaque strip of app background - that
+        // strip is what used to linger as a band along the bottom edge of
+        // the screen, and what flashed while the bar faded out.
+        .transparent(true)
         .always_on_top(true)
         .skip_taskbar(true)
         .shadow(false)
         .resizable(false)
-        .position(x, y)
-        .inner_size(width, height)
-        .visible(true)
+        // Never take activation away from the fullscreen main window, not
+        // even when first created. tao remembers this for every later
+        // `show()` too (SW_SHOWNOACTIVATE). Otherwise showing the bar made
+        // it the foreground window: Windows then no longer treated the main
+        // window as fullscreen and brought the taskbar edge back along the
+        // bottom of the screen, and keyboard shortcuts (Space, Esc, arrows)
+        // stopped reaching the player until the video was clicked.
+        .focused(false)
+        .visible(false)
         .build()
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+
+    // Positioned in physical pixels after creation rather than through the
+    // builder's logical position/size, so the bar lines up exactly with the
+    // monitor's bottom edge at any display scaling (no 1px rounding gaps).
+    window
+        .set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(x, y)))
+        .map_err(|e| e.to_string())?;
+    window
+        .set_size(tauri::Size::Physical(tauri::PhysicalSize::new(width, height)))
+        .map_err(|e| e.to_string())?;
+    window.show().map_err(|e| e.to_string())
 }
 
 /// Shows the bar and cursor if hidden, and (re)schedules the 3-second
@@ -68,36 +96,49 @@ fn schedule_auto_hide(app: &AppHandle) {
     let app_for_task = app.clone();
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(Duration::from_millis(HIDE_DELAY_MS)).await;
-        if GENERATION.load(Ordering::SeqCst) != generation || SUSPENDED.load(Ordering::SeqCst) {
-            return;
+        let still_current =
+            || GENERATION.load(Ordering::SeqCst) == generation && !SUSPENDED.load(Ordering::SeqCst);
+        {
+            let active = ACTIVE.lock().unwrap();
+            if !*active || !still_current() {
+                return;
+            }
+            crate::mpv_window::set_cursor_hidden(true);
+            if let Some(window) = app_for_task.get_webview_window(WINDOW_LABEL) {
+                let _ = window.emit("fullscreen-controls-visibility", false);
+            }
         }
-        crate::mpv_window::set_cursor_hidden(true);
-        let Some(window) = app_for_task.get_webview_window(WINDOW_LABEL) else {
-            return;
-        };
-        let _ = window.emit("fullscreen-controls-visibility", false);
         tokio::time::sleep(Duration::from_millis(FADE_MS)).await;
-        if GENERATION.load(Ordering::SeqCst) != generation || SUSPENDED.load(Ordering::SeqCst) {
+        let active = ACTIVE.lock().unwrap();
+        if !*active || !still_current() {
             return;
         }
-        let _ = window.hide();
+        if let Some(window) = app_for_task.get_webview_window(WINDOW_LABEL) {
+            let _ = window.hide();
+        }
     });
 }
 
 /// Called once when entering fullscreen: creates/positions the overlay
 /// spanning the full width at the bottom of the screen, and starts the same
-/// 5-second auto-hide countdown a mouse-move pulse would.
+/// 3-second auto-hide countdown a mouse-move pulse would. All values are in
+/// physical pixels (the monitor's own coordinate space).
 #[tauri::command]
 pub async fn show_fullscreen_controls(
     app: AppHandle,
-    x: f64,
-    y: f64,
-    width: f64,
-    height: f64,
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
 ) -> Result<(), String> {
-    get_or_create_window(&app, x, y, width, height)?;
-    if let Some(window) = app.get_webview_window(WINDOW_LABEL) {
-        let _ = window.emit("fullscreen-controls-visibility", true);
+    {
+        let mut active = ACTIVE.lock().unwrap();
+        *active = true;
+        SUSPENDED.store(false, Ordering::SeqCst);
+        get_or_create_window(&app, x, y, width, height)?;
+        if let Some(window) = app.get_webview_window(WINDOW_LABEL) {
+            let _ = window.emit("fullscreen-controls-visibility", true);
+        }
     }
     schedule_auto_hide(&app);
     Ok(())
@@ -120,9 +161,15 @@ pub async fn show_fullscreen_controls(
 /// symptom this must never produce.
 #[tauri::command]
 pub async fn pulse_fullscreen_controls(app: AppHandle) -> Result<(), String> {
-    if let Some(window) = app.get_webview_window(WINDOW_LABEL) {
-        window.show().map_err(|e| e.to_string())?;
-        let _ = window.emit("fullscreen-controls-visibility", true);
+    {
+        let active = ACTIVE.lock().unwrap();
+        if !*active {
+            return Ok(());
+        }
+        if let Some(window) = app.get_webview_window(WINDOW_LABEL) {
+            window.show().map_err(|e| e.to_string())?;
+            let _ = window.emit("fullscreen-controls-visibility", true);
+        }
     }
     schedule_auto_hide(&app);
     Ok(())
@@ -132,21 +179,28 @@ pub async fn pulse_fullscreen_controls(app: AppHandle) -> Result<(), String> {
 /// over the bar itself, or while another overlay that must keep it on-screen
 /// (e.g. the video-adjust popover) is open. Suspending cancels any pending
 /// hide and guarantees the bar is shown; resuming re-arms the 3-second
-/// countdown from that moment, exactly like a fresh pulse.
+/// countdown from that moment, exactly like a fresh pulse. Ignored outside
+/// fullscreen, so callers don't need to know whether fullscreen is active.
 #[tauri::command]
 pub async fn set_fullscreen_controls_suspended(app: AppHandle, suspended: bool) -> Result<(), String> {
-    SUSPENDED.store(suspended, Ordering::SeqCst);
-    if !suspended {
-        schedule_auto_hide(&app);
-        return Ok(());
+    {
+        let active = ACTIVE.lock().unwrap();
+        if !*active {
+            SUSPENDED.store(false, Ordering::SeqCst);
+            return Ok(());
+        }
+        SUSPENDED.store(suspended, Ordering::SeqCst);
+        if suspended {
+            GENERATION.fetch_add(1, Ordering::SeqCst);
+            crate::mpv_window::set_cursor_hidden(false);
+            if let Some(window) = app.get_webview_window(WINDOW_LABEL) {
+                window.show().map_err(|e| e.to_string())?;
+                let _ = window.emit("fullscreen-controls-visibility", true);
+            }
+            return Ok(());
+        }
     }
-
-    GENERATION.fetch_add(1, Ordering::SeqCst);
-    crate::mpv_window::set_cursor_hidden(false);
-    if let Some(window) = app.get_webview_window(WINDOW_LABEL) {
-        window.show().map_err(|e| e.to_string())?;
-        let _ = window.emit("fullscreen-controls-visibility", true);
-    }
+    schedule_auto_hide(&app);
     Ok(())
 }
 
@@ -154,6 +208,8 @@ pub async fn set_fullscreen_controls_suspended(app: AppHandle, suspended: bool) 
 /// period or fade - fullscreen itself is already ending.
 #[tauri::command]
 pub async fn hide_fullscreen_controls_now(app: AppHandle) -> Result<(), String> {
+    let mut active = ACTIVE.lock().unwrap();
+    *active = false;
     GENERATION.fetch_add(1, Ordering::SeqCst);
     SUSPENDED.store(false, Ordering::SeqCst);
     crate::mpv_window::set_cursor_hidden(false);

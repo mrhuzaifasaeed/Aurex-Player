@@ -4,11 +4,11 @@ import { usePlayerStore } from "../../stores/playerStore";
 import { useTauriFileDrop } from "../../hooks/useTauriFileDrop";
 import { useVideoSurfaceSync } from "../../hooks/useVideoSurfaceSync";
 import { useVideoSurfaceOverlayExclusion } from "../../hooks/useVideoSurfaceOverlayExclusion";
-import { openFilesDialog, openPaths } from "../../lib/openMedia";
+import { openFilesDialog, openFolderDialog, openPaths } from "../../lib/openMedia";
 import { playbackService } from "../../services/playbackService";
 import { toggleFullscreen } from "../../lib/playbackActions";
 import { consumeSurfaceClickSuppression } from "../../lib/surfaceClickGuard";
-import { FolderOpenIcon } from "../icons";
+import { AlertIcon, FileIcon, FolderOpenIcon } from "../icons";
 import { VolumeHud } from "./VolumeHud";
 import { AudioLogoView } from "./AudioLogoView";
 import { ResumePrompt } from "./ResumePrompt";
@@ -20,6 +20,13 @@ import { ResumePrompt } from "./ResumePrompt";
 // instead (mirrors the native mpv surface's WM_LBUTTONUP/WM_LBUTTONDBLCLK
 // debounce in mpv_window.rs, which handles the same race for video tracks).
 const CLICK_DEBOUNCE_MS = 250;
+
+const fadeScale = {
+  initial: { opacity: 0, scale: 0.98 },
+  animate: { opacity: 1, scale: 1 },
+  exit: { opacity: 0, scale: 0.98 },
+  transition: { duration: 0.2, ease: "easeOut" },
+} as const;
 
 export function VideoSurface() {
   const state = usePlayerStore((s) => s.state);
@@ -91,58 +98,100 @@ export function VideoSurface() {
         }
         void toggleFullscreen();
       }}
-      className={`relative flex flex-1 items-center justify-center bg-black shadow-[inset_0_0_0_0px_rgb(var(--accent)/0)] transition-shadow duration-200 ease-out ${
+      className={`relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-black shadow-[inset_0_0_0_0px_rgb(var(--accent)/0)] transition-shadow duration-200 ease-out ${
         isDragOver ? "shadow-[inset_0_0_0_2px_rgb(var(--accent))]" : ""
       }`}
     >
       {/* The native mpv render surface is embedded here by the Tauri backend
           (video tracks only - see surfaceActive above). */}
       <AnimatePresence mode="wait">
-        {(!currentTrack || state === "error") && (
-          <motion.div
-            key="prompt"
-            initial={{ opacity: 0, scale: 0.98 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.98 }}
-            transition={{ duration: 0.2, ease: "easeOut" }}
-            className="flex flex-col items-center gap-5 text-[rgb(var(--text-muted))]"
-          >
-            {state === "error" && (
-              <div className="max-w-md rounded-md bg-[rgb(var(--bg-elevated))] px-4 py-2 text-sm text-[rgb(var(--danger))]">
-                {errorMessage ?? "Playback error"}
-              </div>
-            )}
-            <FolderOpenIcon className="h-9 w-9 opacity-40" />
-            <div className="flex flex-col items-center gap-3">
-              <p className="text-sm">Drag and drop media here, or</p>
-              <motion.button
-                onClick={() => void openFilesDialog()}
-                whileHover={{ scale: 1.03 }}
-                whileTap={{ scale: 0.97 }}
-                className="glass-btn cursor-pointer rounded-md bg-[rgb(var(--bg-hover))] px-4 py-2 text-sm font-medium text-[rgb(var(--text))] transition-colors duration-150 hover:bg-[rgb(var(--accent))] hover:text-white"
-              >
-                Open File
-              </motion.button>
-            </div>
+        {state === "error" ? (
+          <motion.div key="error" {...fadeScale}>
+            <ErrorState message={errorMessage} />
           </motion.div>
-        )}
-        {isAudioOnly && state !== "error" && (
-          <motion.div
-            key="audio-logo"
-            initial={{ opacity: 0, scale: 0.98 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.98 }}
-            transition={{ duration: 0.2, ease: "easeOut" }}
-          >
-            <AudioLogoView title={currentTrack!.title} playing={state === "playing"} />
+        ) : !currentTrack ? (
+          <motion.div key="prompt" {...fadeScale}>
+            <EmptyState isDragOver={isDragOver} />
           </motion.div>
-        )}
+        ) : isAudioOnly ? (
+          // Loading is shown inside the audio view itself - a separate
+          // "Loading <file>..." line used to be layered on top of it here,
+          // right across the middle of the screen, and could get stuck there.
+          <motion.div key="audio-logo" {...fadeScale}>
+            <AudioLogoView title={currentTrack.title} state={state} />
+          </motion.div>
+        ) : null}
       </AnimatePresence>
-      {state === "loading" && currentTrack && (
-        <div className="absolute text-sm text-[rgb(var(--text-muted))]">Loading {currentTrack.title}…</div>
-      )}
       <VolumeHud />
       <ResumePrompt />
+    </div>
+  );
+}
+
+function EmptyState({ isDragOver }: { isDragOver: boolean }) {
+  return (
+    <div
+      className={`flex w-[min(420px,calc(100vw-48px))] flex-col items-center gap-5 rounded-2xl border border-dashed px-8 py-9 text-center transition-colors duration-200 [@media(max-height:460px)]:gap-3 [@media(max-height:460px)]:py-5 ${
+        isDragOver
+          ? "border-[rgb(var(--accent))] bg-[rgb(var(--accent)/0.08)]"
+          : "border-white/10 bg-white/[0.02]"
+      }`}
+    >
+      <div
+        className={`flex h-14 w-14 items-center justify-center rounded-2xl transition-colors duration-200 [@media(max-height:460px)]:hidden ${
+          isDragOver ? "bg-[rgb(var(--accent))] text-white" : "bg-white/[0.06] text-white/70"
+        }`}
+      >
+        <FolderOpenIcon className="h-7 w-7" />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <p className="text-[15px] font-semibold text-white/90">
+          {isDragOver ? "Drop to start playing" : "Drop a video or song here"}
+        </p>
+        <p className="text-xs leading-relaxed text-white/45 [@media(max-height:460px)]:hidden">
+          MP4, MKV, AVI, MOV, WebM, MP3, FLAC, WAV and more
+        </p>
+      </div>
+      <div className="flex flex-wrap items-center justify-center gap-2">
+        <motion.button
+          onClick={() => void openFilesDialog()}
+          whileTap={{ scale: 0.97 }}
+          className="glass-btn flex items-center gap-2 rounded-lg bg-[rgb(var(--accent))] px-4 py-2 text-sm font-medium text-white shadow-[0_6px_18px_-8px_rgb(var(--accent))] transition-[filter] duration-150 hover:brightness-110"
+        >
+          <FileIcon className="h-4 w-4" />
+          Open File
+        </motion.button>
+        <motion.button
+          onClick={() => void openFolderDialog()}
+          whileTap={{ scale: 0.97 }}
+          className="glass-btn flex items-center gap-2 rounded-lg bg-white/[0.08] px-4 py-2 text-sm font-medium text-white/85 transition-colors duration-150 hover:bg-white/[0.14]"
+        >
+          <FolderOpenIcon className="h-4 w-4" />
+          Open Folder
+        </motion.button>
+      </div>
+    </div>
+  );
+}
+
+function ErrorState({ message }: { message?: string }) {
+  return (
+    <div className="flex w-[min(420px,calc(100vw-48px))] flex-col items-center gap-4 text-center">
+      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[rgb(var(--danger)/0.14)] text-[rgb(var(--danger))]">
+        <AlertIcon className="h-6 w-6" />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <p className="text-[15px] font-semibold text-white/90">Couldn't play this file</p>
+        <p className="text-xs leading-relaxed text-white/55">{message ?? "Something went wrong during playback."}</p>
+      </div>
+      <motion.button
+        onClick={() => void openFilesDialog()}
+        whileTap={{ scale: 0.97 }}
+        className="glass-btn flex items-center gap-2 rounded-lg bg-white/[0.08] px-4 py-2 text-sm font-medium text-white/85 transition-colors duration-150 hover:bg-white/[0.14]"
+      >
+        <FileIcon className="h-4 w-4" />
+        Open Another File
+      </motion.button>
     </div>
   );
 }

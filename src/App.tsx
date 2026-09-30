@@ -7,6 +7,7 @@ import { Onboarding } from "./components/Onboarding";
 import { SettingsDialog, type SettingsTab } from "./components/settings/SettingsDialog";
 import { useSettingsStore } from "./stores/settingsStore";
 import { useUiStore } from "./stores/uiStore";
+import { usePlayerStore } from "./stores/playerStore";
 import { listenToPlayerEvents } from "./services/playbackService";
 import { usePlaybackAdvance } from "./hooks/usePlaybackAdvance";
 import { useOpenFileFromOS } from "./hooks/useOpenFileFromOS";
@@ -15,19 +16,41 @@ import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { useFullscreenChrome } from "./hooks/useFullscreenChrome";
 import { useAutoUpdateCheck } from "./hooks/useAutoUpdateCheck";
 import { adjustVolumeByNotches } from "./lib/volume";
+import { runControlsAction } from "./lib/playbackActions";
+import { hostControlsBridge } from "./lib/controlsBridge";
+import { splitFileName } from "./lib/format";
+
+const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
 function App() {
   const onboardingComplete = useSettingsStore((s) => s.onboardingComplete);
   const isFullscreen = useUiStore((s) => s.isFullscreen);
+  const trackTitle = usePlayerStore((s) => s.currentTrack()?.title);
   const [settingsTab, setSettingsTab] = useState<SettingsTab | null>(null);
 
   useEffect(() => {
-    let unlisten: (() => void) | undefined;
-    listenToPlayerEvents().then((fn) => {
-      unlisten = fn;
-    });
-    return () => unlisten?.();
+    let cancelled = false;
+    const cleanups: Array<() => void> = [];
+    const keep = (fn: () => void) => (cancelled ? fn() : cleanups.push(fn));
+    void listenToPlayerEvents().then(keep);
+    // Serves the fullscreen control bar's window (see controlsBridge.ts).
+    void hostControlsBridge(runControlsAction).then(keep);
+    return () => {
+      cancelled = true;
+      cleanups.forEach((fn) => fn());
+    };
   }, []);
+
+  // Names the window after what's playing, so it's recognizable in the
+  // taskbar and Alt+Tab rather than every instance just saying "Aurex Player".
+  useEffect(() => {
+    const title = trackTitle ? `${splitFileName(trackTitle).name} - Aurex Player` : "Aurex Player";
+    document.title = title;
+    if (!isTauri) return;
+    void import("@tauri-apps/api/window")
+      .then(({ getCurrentWindow }) => getCurrentWindow().setTitle(title))
+      .catch(() => {});
+  }, [trackTitle]);
 
   // Fades out and removes the static pre-React splash (see index.html) now
   // that the real UI has actually mounted - runs once, regardless of which

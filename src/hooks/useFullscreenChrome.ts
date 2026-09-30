@@ -5,11 +5,12 @@ import { pulseFullscreenControls } from "../lib/fullscreenControls";
 
 const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
-// Comfortably fits TransportControls' seek bar + the time-flanking row below
-// it (current/duration) + button row + padding. Bumped from the original 100
-// when that time row was added below the seek bar - at 100 it clipped the
-// button row off the bottom of this (fixed-size, non-scrolling) window.
-export const CONTROLS_BAR_HEIGHT = 132;
+// Height (logical px) of the fullscreen control-bar overlay window: the
+// floating TransportControls panel (seek row + button row) plus the margin
+// around it (see FullscreenControlsWindow.tsx). The window is transparent
+// and the panel is pinned to its bottom, so a little spare height is
+// invisible - it only has to be enough never to clip the panel.
+export const CONTROLS_BAR_HEIGHT = 112;
 
 /**
  * Positions the fullscreen control-bar overlay window (see
@@ -31,19 +32,51 @@ export function useFullscreenChrome() {
         return;
       }
 
+      // Anchored to the monitor rather than to this window's own bounds:
+      // right after setFullscreen() resolves the window can still report
+      // its pre-fullscreen (maximized) geometry, which used to leave the bar
+      // floating above the real bottom of the screen with a strip of video
+      // underneath it. Everything is computed in physical pixels, so it
+      // lines up exactly at any display scaling.
+      const { currentMonitor, getCurrentWindow } = await import("@tauri-apps/api/window");
+      const win = getCurrentWindow();
+      const monitor = await currentMonitor().catch(() => null);
+      const [pos, size, scale] = monitor
+        ? [monitor.position, monitor.size, monitor.scaleFactor]
+        : await Promise.all([win.outerPosition(), win.outerSize(), win.scaleFactor()]);
+      const bounds = { x: pos.x, y: pos.y, width: size.width, height: size.height, scale };
+      const height = Math.round(CONTROLS_BAR_HEIGHT * bounds.scale);
+      await invoke("show_fullscreen_controls", {
+        x: bounds.x,
+        y: bounds.y + bounds.height - height,
+        width: bounds.width,
+        height,
+      });
+    })().catch((err) => console.error("[useFullscreenChrome] failed to update the fullscreen bar:", err));
+  }, [isFullscreen]);
+
+  // Keeps the UI in step with the real window if fullscreen is left some
+  // other way than our own toggle (e.g. Win+Down, or a display change) -
+  // otherwise the titlebar and transport bar would stay hidden.
+  useEffect(() => {
+    if (!isTauri) return;
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+    (async () => {
       const { getCurrentWindow } = await import("@tauri-apps/api/window");
       const win = getCurrentWindow();
-      const [outerPos, outerSize, scale] = await Promise.all([
-        win.outerPosition(),
-        win.outerSize(),
-        win.scaleFactor(),
-      ]);
-      const x = outerPos.x / scale;
-      const width = outerSize.width / scale;
-      const y = outerPos.y / scale + outerSize.height / scale - CONTROLS_BAR_HEIGHT;
-      await invoke("show_fullscreen_controls", { x, y, width, height: CONTROLS_BAR_HEIGHT });
+      const fn = await win.onResized(async () => {
+        const actual = await win.isFullscreen();
+        if (actual !== useUiStore.getState().isFullscreen) useUiStore.getState().setFullscreen(actual);
+      });
+      if (cancelled) fn();
+      else unlisten = fn;
     })();
-  }, [isFullscreen]);
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, []);
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {

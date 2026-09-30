@@ -175,14 +175,6 @@ body {
   transition: background-color 200ms ease, color 200ms ease;
 }
 
-/* The video-adjustments overlay window is a separate, transparent,
-   borderless window (see video_adjust_window.rs) - its body must stay
-   see-through outside the rounded panel it renders, instead of the normal
-   opaque app background. */
-:root[data-window="video-adjust-popover"] body {
-  background-color: transparent;
-}
-
 /* Liquid Glass background: soft, accent-tinted ambient glow in two corners
    for the glass panels to diffuse against, instead of a flat fill. Kept
    subtle - this is the only place the background itself changes for this
@@ -192,6 +184,26 @@ body {
     radial-gradient(1100px 760px at 12% -8%, rgb(var(--accent) / 0.16), transparent 60%),
     radial-gradient(900px 680px at 105% 105%, rgb(var(--accent) / 0.10), transparent 55%),
     rgb(var(--bg));
+}
+
+/* The video-adjustments popover and the fullscreen control bar are separate,
+   transparent, borderless windows (see video_adjust_window.rs /
+   fullscreen_bar_window.rs) - their body must stay see-through outside the
+   rounded panel each renders, instead of the normal opaque app background.
+   Declared after the Liquid Glass body rule on purpose: both have the same
+   specificity, and the glass gradient used to win here, painting an opaque
+   box behind the popover. */
+:root[data-window="video-adjust-popover"] body,
+:root[data-window="fullscreen-controls"] body {
+  background: transparent;
+}
+
+/* backdrop-filter can't blur what's behind a separate transparent window (the
+   video, in the fullscreen bar's case) - it only sees this window's own empty
+   body - so the glass panel there would just be a see-through tint over busy
+   footage. Keep it mostly opaque so the controls stay legible. */
+:root[data-theme="glass"][data-window="fullscreen-controls"] {
+  --surface-alpha: 0.86;
 }
 
 /* Shared "floating glass surface" treatment for every panel-like container
@@ -259,20 +271,20 @@ body {
 /* Custom range slider: thin track with an accent-colored progress fill
    (driven by the --progress custom property, set inline per-slider) and a
    thumb that only appears on hover/focus/active, matching the minimal
-   control-bar aesthetic instead of the browser's default slider chrome. */
+   control-bar aesthetic instead of the browser's default slider chrome.
+   The input itself is taller than the visible track so it's easy to grab -
+   the 4px line is drawn by the track pseudo-element, centered inside it. */
 .aurex-range {
   --progress: 0%;
+  --track-height: 4px;
+  --track-fill: rgb(var(--accent));
+  --track-rest: rgb(var(--border));
   appearance: none;
-  height: 4px;
+  height: 16px;
   border-radius: 999px;
-  background: linear-gradient(
-    to right,
-    rgb(var(--accent)) var(--progress),
-    rgb(var(--border)) var(--progress)
-  );
+  background: transparent;
   cursor: pointer;
   outline: none;
-  transition: height 120ms ease;
 }
 
 .aurex-range:disabled {
@@ -280,13 +292,29 @@ body {
   opacity: 0.4;
 }
 
+.aurex-range::-webkit-slider-runnable-track {
+  height: var(--track-height);
+  border-radius: 999px;
+  background: linear-gradient(to right, var(--track-fill) var(--progress), var(--track-rest) var(--progress));
+  transition: height 120ms ease;
+}
+
+.aurex-range::-moz-range-track {
+  height: var(--track-height);
+  border-radius: 999px;
+  background: linear-gradient(to right, var(--track-fill) var(--progress), var(--track-rest) var(--progress));
+}
+
 .aurex-range::-webkit-slider-thumb {
   appearance: none;
   width: 13px;
   height: 13px;
+  /* Centers the thumb on the (thinner) track. */
+  margin-top: calc((var(--track-height) - 13px) / 2);
   border-radius: 50%;
   background: rgb(var(--text));
   border: none;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.35);
   opacity: 0;
   transition: opacity 120ms ease, transform 120ms ease;
 }
@@ -299,6 +327,10 @@ body {
 
 .aurex-range:active::-webkit-slider-thumb {
   transform: scale(1.15);
+}
+
+.aurex-range:disabled::-webkit-slider-thumb {
+  opacity: 0;
 }
 
 .aurex-range::-moz-range-thumb {
@@ -318,21 +350,18 @@ body {
 }
 
 .aurex-range:focus-visible {
-  box-shadow: 0 0 0 2px rgb(var(--bg-elevated)), 0 0 0 4px rgb(var(--accent) / 0.5);
+  box-shadow: 0 0 0 2px rgb(var(--accent) / 0.5);
 }
 
-.aurex-range.aurex-range-seek:hover {
-  height: 6px;
+.aurex-range.aurex-range-seek:hover,
+.aurex-range.aurex-range-seek:active {
+  --track-height: 6px;
 }
 
 /* Liquid Glass: soft translucent track (instead of the flat opaque border
    color) and a gentle accent glow around the thumb while interacting. */
 :root[data-theme="glass"] .aurex-range {
-  background: linear-gradient(
-    to right,
-    rgb(var(--accent)) var(--progress),
-    rgb(255 255 255 / 0.12) var(--progress)
-  );
+  --track-rest: rgb(255 255 255 / 0.12);
 }
 
 :root[data-theme="glass"] .aurex-range::-webkit-slider-thumb {

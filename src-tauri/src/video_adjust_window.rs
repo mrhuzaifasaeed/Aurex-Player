@@ -24,7 +24,6 @@ fn get_or_create_window(
         window.set_size(tauri::Size::Logical(tauri::LogicalSize::new(width, height)))
             .map_err(|e| e.to_string())?;
         window.show().map_err(|e| e.to_string())?;
-        window.set_focus().map_err(|e| e.to_string())?;
         return Ok(());
     }
 
@@ -36,6 +35,12 @@ fn get_or_create_window(
         .skip_taskbar(true)
         .shadow(false)
         .resizable(false)
+        // Shown on hover, so it must not take keyboard focus away from the
+        // player: doing so left Space/arrow-key shortcuts dead after merely
+        // hovering the button, and in fullscreen made Windows bring the
+        // taskbar back over the video. Clicking a slider still activates it
+        // normally (and the popover hands focus straight back on release).
+        .focused(false)
         .position(x, y)
         .inner_size(width, height)
         .visible(true)

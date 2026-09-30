@@ -288,3 +288,45 @@ export function UpdateAvailableIcon({ className }: IconProps) {
     </svg>
   );
 }
+
+export function FullscreenIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <path d="M4 9V5.5A1.5 1.5 0 0 1 5.5 4H9" />
+      <path d="M15 4h3.5A1.5 1.5 0 0 1 20 5.5V9" />
+      <path d="M20 15v3.5a1.5 1.5 0 0 1-1.5 1.5H15" />
+      <path d="M9 20H5.5A1.5 1.5 0 0 1 4 18.5V15" />
+    </svg>
+  );
+}
+
+export function ExitFullscreenIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <path d="M9 4v3.5A1.5 1.5 0 0 1 7.5 9H4" />
+      <path d="M20 9h-3.5A1.5 1.5 0 0 1 15 7.5V4" />
+      <path d="M15 20v-3.5a1.5 1.5 0 0 1 1.5-1.5H20" />
+      <path d="M4 15h3.5A1.5 1.5 0 0 1 9 16.5V20" />
+    </svg>
+  );
+}
+
+export function MusicIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <path d="M9 18V5.5l11-2V16" />
+      <circle cx="6.5" cy="18" r="2.5" />
+      <circle cx="17.5" cy="16" r="2.5" />
+    </svg>
+  );
+}
+
+export function AlertIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <path d="M10.3 4.2 2.8 17.5A2 2 0 0 0 4.5 20.5h15a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0Z" />
+      <path d="M12 9.5v4.5" />
+      <path d="M12 17.2v.01" strokeWidth={2.2} />
+    </svg>
+  );
+}

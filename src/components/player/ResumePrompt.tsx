@@ -52,30 +52,42 @@ export function ResumePrompt() {
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 8, scale: 0.98 }}
           transition={{ duration: 0.22, ease: "easeOut" }}
-          className="glass-panel absolute left-1/2 z-40 flex -translate-x-1/2 items-center gap-5 rounded-xl border border-[rgb(var(--border))] px-5 py-4 shadow-xl"
+          className="glass-panel absolute left-1/2 z-40 flex max-w-[calc(100%-32px)] -translate-x-1/2 items-center gap-5 overflow-hidden rounded-xl border border-[rgb(var(--border))] px-5 py-4 shadow-xl"
           style={{ bottom: isFullscreen ? FULLSCREEN_BOTTOM_OFFSET_PX : WINDOWED_BOTTOM_OFFSET_PX }}
         >
-          <p className="text-sm leading-relaxed text-[rgb(var(--text))]">
-            Continue from{" "}
-            <span className="font-semibold tabular-nums text-[rgb(var(--accent))]">
-              {formatTime(resumePrompt.resumeSeconds)}
-            </span>
-            ?
-          </p>
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <p className="text-sm font-medium text-[rgb(var(--text))]">Continue where you left off?</p>
+            <p className="truncate text-xs text-[rgb(var(--text-muted))]">
+              Resumes from{" "}
+              <span className="font-semibold tabular-nums text-[rgb(var(--accent))]">
+                {formatTime(resumePrompt.resumeSeconds)}
+              </span>{" "}
+              in a few seconds
+            </p>
+          </div>
           <div className="flex shrink-0 items-center gap-2">
             <button
               onClick={dismissResume}
-              className="glass-btn rounded-md px-3.5 py-2 text-sm font-medium text-[rgb(var(--text-muted))] transition-colors duration-150 hover:bg-[rgb(var(--bg-hover))] hover:text-[rgb(var(--text))]"
+              className="glass-btn rounded-lg px-3.5 py-2 text-sm font-medium text-[rgb(var(--text-muted))] transition-colors duration-150 hover:bg-[rgb(var(--bg-hover))] hover:text-[rgb(var(--text))]"
             >
               Start Over
             </button>
             <button
               onClick={confirmResume}
-              className="glass-btn rounded-md bg-[rgb(var(--accent))] px-3.5 py-2 text-sm font-medium text-white shadow-sm transition-opacity duration-150 hover:opacity-90"
+              className="glass-btn rounded-lg bg-[rgb(var(--accent))] px-3.5 py-2 text-sm font-medium text-white shadow-sm transition-[filter] duration-150 hover:brightness-110"
             >
               Continue
             </button>
           </div>
+          {/* Counts down to the automatic resume. */}
+          <motion.span
+            key={resumePrompt.path}
+            className="absolute inset-x-0 bottom-0 h-0.5 origin-left bg-[rgb(var(--accent))]"
+            initial={{ scaleX: 1 }}
+            animate={{ scaleX: 0 }}
+            transition={{ duration: AUTO_CONFIRM_MS / 1000, ease: "linear" }}
+            aria-hidden="true"
+          />
         </motion.div>
       )}
     </AnimatePresence>

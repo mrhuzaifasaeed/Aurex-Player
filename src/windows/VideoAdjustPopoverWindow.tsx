@@ -2,8 +2,8 @@ import { useEffect, useState } from "react";
 import { VIDEO_ADJUST_FIELDS, VideoAdjustSliders } from "../components/player/VideoAdjustFields";
 import { playbackService } from "../services/playbackService";
 import { useVideoEqStore, type VideoEqProperty } from "../stores/videoEqStore";
-import { useUiStore } from "../stores/uiStore";
 import { setFullscreenControlsSuspended } from "../lib/fullscreenControls";
+import { focusMainWindow } from "../lib/controlsBridge";
 
 const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
@@ -53,13 +53,18 @@ export function VideoAdjustPopoverWindow() {
         // bar in a separate native window - keep the bar's auto-hide
         // countdown suspended for as long as this one is open too, so it
         // can't fade out from under an in-progress brightness/contrast drag.
-        if (useUiStore.getState().isFullscreen) void setFullscreenControlsSuspended(true);
+        // (A no-op outside fullscreen - see fullscreen_bar_window.rs; this
+        // window can't tell on its own whether the player is fullscreen.)
+        void setFullscreenControlsSuspended(true);
         void invoke("keep_video_adjust_popover_open");
       }}
       onMouseLeave={() => {
-        if (useUiStore.getState().isFullscreen) void setFullscreenControlsSuspended(false);
+        void setFullscreenControlsSuspended(false);
         void invoke("request_hide_video_adjust_popover");
       }}
+      // Dragging a slider activates this window; give keyboard focus back to
+      // the player as soon as the drag ends so shortcuts keep working.
+      onPointerUp={() => void focusMainWindow()}
     >
       <VideoAdjustSliders values={values} onChange={handleChange} onReset={handleReset} />
     </div>
